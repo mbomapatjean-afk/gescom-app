@@ -1,0 +1,36 @@
+server:
+  port: 8079
+  servlet:
+    context-path: /gescom
+
+app:
+  services:
+    createClient:
+      url: http://localhost:9087/client/managment
+    getIdClient:
+      url: http://localhost:9087/client/managment/getIdClient?email={email}
+    notification:
+      url: http://localhost:9088/notification/managment
+    produit:
+      listUrl : http://localhost:8085/produit/catalogue
+      getProduit: http://localhost:8085/produit/catalogue/{idProduit}
+spring:
+  application:
+    name: gescom.auth
+  mvc:
+    view:
+      prefix: /WEB-INF/views/
+      suffix: .jsp
+
+  datasource:
+    url: jdbc:mysql://localhost:3306/gescom_db
+    username: root
+    password: ''
+
+  jpa:
+    show-sql: true
+    properties:
+      hibernate:
+        format_sql: true
+    hibernate:
+      ddl-auto: none
