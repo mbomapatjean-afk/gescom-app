@@ -1,5 +1,6 @@
 package com.gescom.auth.controller;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
@@ -8,6 +9,8 @@ import org.springframework.ui.Model;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestParam;
+import org.springframework.web.servlet.support.RequestContextUtils;
+import org.springframework.web.util.UriComponentsBuilder;
 import org.springframework.web.client.HttpStatusCodeException;
 import org.springframework.web.client.ResourceAccessException;
 import org.springframework.web.client.RestTemplate;
@@ -19,6 +22,7 @@ import java.util.Map;
 public class LoginController {
 
     private final RestTemplate restTemplate = new RestTemplate();
+    private final ObjectMapper objectMapper = new ObjectMapper();
 
     @Value("${app.services.createClient.url}")
     private String createClientUrl;
@@ -29,11 +33,14 @@ public class LoginController {
     @Value("${app.services.notification.url}")
     private String notificationUrl;
 
-//    @Value("${app.services.commande.url}")
+    @Value("${app.services.produit.listUrl}")
     private String commandeUrl;
 
-//    @Value("${app.services.recherchePaiement.url}")
-    private String recherchePaiementUrl;
+    @Value("${app.services.produit.getProduit}")
+    private String rechercheCommandeUrl;
+    
+    @Value("${app.services.home.url}")
+    private String homeUrl;
 
     @GetMapping("/")
     public String afficherLogin() {
@@ -41,21 +48,19 @@ public class LoginController {
     }
 
     @GetMapping("/home")
-    public String afficherHome(
-            jakarta.servlet.http.HttpServletRequest request,
-            Model model) {
-
-        // Récupération des attributs flash si présents
-        java.util.Map<String, ?> flashAttributes =
-                org.springframework.web.servlet.support.RequestContextUtils.getInputFlashMap(request);
-
-        if (flashAttributes != null) {
-            model.addAttribute("nomClient", flashAttributes.get("nomClient"));
-            model.addAttribute("emailClient", flashAttributes.get("emailClient"));
+    public String afficherHome(Model model) {
+        Map<String, Object> flashAttributes = model.asMap();
+        
+        if (flashAttributes.isEmpty()) {
+            return "redirect:/";
         }
-        model.addAttribute("commandeUrl", commandeUrl);
-        model.addAttribute("recherchePaiementUrl", recherchePaiementUrl);
-        return "home";
+
+        String finalUrl = UriComponentsBuilder.fromUriString(homeUrl)
+                .buildAndExpand(flashAttributes)
+                .encode()
+                .toUriString();
+
+        return "redirect:" + finalUrl;
     }
 
     @PostMapping("/login")
@@ -71,12 +76,20 @@ public class LoginController {
             clientData.put("emailClient", emailClient);
             String url = getIdClientUrl.replace("{email}", emailClient);
 
-            ResponseEntity<String> response = restTemplate.postForEntity(url, clientData, String.class);
+            ResponseEntity<String> response = restTemplate.getForEntity(url, String.class);
 
-            redirectAttributes.addFlashAttribute("idClient", response.getBody());
-            redirectAttributes.addFlashAttribute("nomClient", nomClient);
-            redirectAttributes.addFlashAttribute("emailClient", emailClient);
-            return "redirect:/home";
+            if (response.getStatusCode().is2xxSuccessful()) {
+                Map<String, Object> responseBody = objectMapper.readValue(response.getBody(), Map.class);
+                redirectAttributes.addFlashAttribute("idClient", responseBody.get("idClient"));
+                redirectAttributes.addFlashAttribute("nomClient", responseBody.get("nomClient"));
+                redirectAttributes.addFlashAttribute("emailClient", responseBody.get("emailClient"));
+                return "redirect:/home";
+            } else {
+                model.addAttribute("error", "Erreur : La connexion a échoué.");
+                model.addAttribute("nomClient", nomClient);
+                model.addAttribute("emailClient", emailClient);
+                return "login";
+            }
         } catch (Exception e) {
             return handleException(e, "login", "service de connexion", nomClient, emailClient, model);
         }
@@ -99,21 +112,34 @@ public class LoginController {
             org.springframework.web.servlet.mvc.support.RedirectAttributes redirectAttributes,
             Model model) {
 
-        Map<String, String> clientData = new HashMap<>();
-        clientData.put("nomClient", nomClient);
-        clientData.put("emailClient", emailClient);
         try {
-            restTemplate.postForEntity(createClientUrl, clientData, String.class);
-            redirectAttributes.addFlashAttribute("nomClient", nomClient);
-            redirectAttributes.addFlashAttribute("emailClient", emailClient);
-            return "redirect:/home";
+            Map<String, String> clientData = new HashMap<>();
+            clientData.put("nomClient", nomClient);
+            clientData.put("emailClient", emailClient);
+
+            ResponseEntity<String> response = restTemplate.postForEntity(createClientUrl, clientData, String.class);
+            if (response.getStatusCode().is2xxSuccessful()) {
+                Map<String, Object> responseBody = objectMapper.readValue(response.getBody(), Map.class);
+                redirectAttributes.addFlashAttribute("idClient", responseBody.get("idClient"));
+                redirectAttributes.addFlashAttribute("nomClient", responseBody.get("nomClient"));
+                redirectAttributes.addFlashAttribute("emailClient", responseBody.get("emailClient"));
+
+                response = restTemplate.postForEntity(notificationUrl, clientData, String.class);
+                if(response.getStatusCode().is2xxSuccessful()){
+                    redirectAttributes.addFlashAttribute("notif", "Vous avez reçu un mail de confirmation.");
+                }
+
+                return "redirect:/home";
+            } else {
+                model.addAttribute("error", "Erreur : La connexion a échoué.");
+                model.addAttribute("nomClient", nomClient);
+                model.addAttribute("emailClient", emailClient);
+                return "createClient";
+            }
         } catch (Exception e) {
             return handleException(e, "createClient", "service de création de client", nomClient, emailClient, model);
         }
-
-
-
-    }
+   }
 
     private String handleException(Exception e, String viewName, String serviceName, String nomClient, String emailClient, Model model) {
         if (e instanceof HttpStatusCodeException) {

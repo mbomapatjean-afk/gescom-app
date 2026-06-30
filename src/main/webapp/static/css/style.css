@@ -69,6 +69,30 @@ input:focus, select:focus {
     box-shadow: 0 0 5px var(--orange);
 }
 
+.password-container {
+    position: relative;
+    width: 100%;
+}
+
+.password-container input[type="password"],
+.password-container input[type="text"] {
+    width: 100%;
+    box-sizing: border-box;
+    padding-right: 40px;
+}
+
+#togglePassword {
+    position: absolute;
+    right: 15px;
+    top: 15px;
+    cursor: pointer;
+    color: #666;
+}
+
+#togglePassword:hover {
+    color: var(--orange);
+}
+
 input::placeholder {
     color: #999;
 }
